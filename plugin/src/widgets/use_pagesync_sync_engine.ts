@@ -19,6 +19,7 @@ import {
   type ServerState,
   type SyncStrength,
 } from '../constants';
+import { trackHostSyncAnalytics } from '../analytics';
 import { loadDeviceConfig, type DeviceConfig } from '../deviceConfig';
 import { errorDetails, normalizeError } from '../errors';
 import { notifyError } from '../notify';
@@ -218,7 +219,7 @@ export function usePageSyncEngine(): PageSyncEngine {
         await plugin.app.toast('Page sync stopped after inactivity timeout.');
       }
     },
-    [clearInactivityTimer, clearReconnect, closeSocket, plugin.app],
+    [clearInactivityTimer, clearReconnect, closeSocket, plugin.app]
   );
 
   const refreshConfig = useCallback(async () => {
@@ -258,7 +259,7 @@ export function usePageSyncEngine(): PageSyncEngine {
         setConnectionState('connected');
       }
     },
-    [plugin],
+    [plugin]
   );
 
   const applyRemoteNavigation = useCallback(
@@ -272,7 +273,7 @@ export function usePageSyncEngine(): PageSyncEngine {
         }, REMOTE_NAV_SUPPRESSION_MS);
       }
     },
-    [plugin],
+    [plugin]
   );
 
   const handleServerUpdate = useCallback(
@@ -303,124 +304,127 @@ export function usePageSyncEngine(): PageSyncEngine {
             error,
             details: `remId=${payload.remId} | ${errorDetails(error)}`,
           }),
-          { scope: 'client' },
+          { scope: 'client' }
         );
       }
     },
-    [applyRemoteNavigation, plugin],
+    [applyRemoteNavigation, plugin]
   );
 
-  const connectWebSocket = useCallback(async (expectedGeneration?: number) => {
-    if (
-      expectedGeneration !== undefined &&
-      expectedGeneration !== reconnectGenerationRef.current
-    ) {
-      return;
-    }
+  const connectWebSocket = useCallback(
+    async (expectedGeneration?: number) => {
+      if (
+        expectedGeneration !== undefined &&
+        expectedGeneration !== reconnectGenerationRef.current
+      ) {
+        return;
+      }
 
-    const cfg = configRef.current;
-    if (!cfg) {
-      return;
-    }
+      const cfg = configRef.current;
+      if (!cfg) {
+        return;
+      }
 
-    clearReconnect();
-    closeSocket();
-    setConnectionState('connecting');
+      clearReconnect();
+      closeSocket();
+      setConnectionState('connecting');
 
-    const wsUrl = normalizeWsUrl(cfg.serverWsUrl);
+      const wsUrl = normalizeWsUrl(cfg.serverWsUrl);
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch (error) {
-      setConnectionState('degraded');
-      await notifyError(
-        plugin,
-        normalizeError({
-          code: 'E_WS_OPEN',
-          error,
-          details: `wsUrl=${wsUrl} | ${errorDetails(error)}`,
-        }),
-        { scope: 'client' },
-      );
-      scheduleClientReconnect();
-      return;
-    }
-
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      reconnectAttemptRef.current = 0;
-      invalidPayloadTimestampsRef.current = [];
-      setConnectionState('connected');
-    };
-
-    ws.onmessage = async (event) => {
+      let ws: WebSocket;
       try {
-        const parsed = JSON.parse(event.data as string) as unknown;
-        if (isPageUpdateMessage(parsed)) {
-          await handleServerUpdate(parsed);
-          return;
-        }
-
-        const now = Date.now();
-        invalidPayloadTimestampsRef.current = invalidPayloadTimestampsRef.current
-          .filter((timestamp) => now - timestamp <= INVALID_WS_PAYLOAD_WINDOW_MS)
-          .concat(now);
-
-        await notifyError(
-          plugin,
-          normalizeError({
-            code: 'E_INVALID_WS_PAYLOAD',
-            details: `payload=${String(event.data)}`,
-          }),
-          { scope: 'client', toast: false },
-        );
-
-        if (invalidPayloadTimestampsRef.current.length >= INVALID_WS_PAYLOAD_THRESHOLD) {
-          setConnectionState('degraded');
-        }
+        ws = new WebSocket(wsUrl);
       } catch (error) {
-        const now = Date.now();
-        invalidPayloadTimestampsRef.current = invalidPayloadTimestampsRef.current
-          .filter((timestamp) => now - timestamp <= INVALID_WS_PAYLOAD_WINDOW_MS)
-          .concat(now);
-
+        setConnectionState('degraded');
         await notifyError(
           plugin,
           normalizeError({
-            code: 'E_INVALID_WS_PAYLOAD',
+            code: 'E_WS_OPEN',
             error,
+            details: `wsUrl=${wsUrl} | ${errorDetails(error)}`,
           }),
-          { scope: 'client', toast: false },
+          { scope: 'client' }
         );
+        scheduleClientReconnect();
+        return;
+      }
 
-        if (invalidPayloadTimestampsRef.current.length >= INVALID_WS_PAYLOAD_THRESHOLD) {
-          setConnectionState('degraded');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        invalidPayloadTimestampsRef.current = [];
+        setConnectionState('connected');
+      };
+
+      ws.onmessage = async (event) => {
+        try {
+          const parsed = JSON.parse(event.data as string) as unknown;
+          if (isPageUpdateMessage(parsed)) {
+            await handleServerUpdate(parsed);
+            return;
+          }
+
+          const now = Date.now();
+          invalidPayloadTimestampsRef.current = invalidPayloadTimestampsRef.current
+            .filter((timestamp) => now - timestamp <= INVALID_WS_PAYLOAD_WINDOW_MS)
+            .concat(now);
+
+          await notifyError(
+            plugin,
+            normalizeError({
+              code: 'E_INVALID_WS_PAYLOAD',
+              details: `payload=${String(event.data)}`,
+            }),
+            { scope: 'client', toast: false }
+          );
+
+          if (invalidPayloadTimestampsRef.current.length >= INVALID_WS_PAYLOAD_THRESHOLD) {
+            setConnectionState('degraded');
+          }
+        } catch (error) {
+          const now = Date.now();
+          invalidPayloadTimestampsRef.current = invalidPayloadTimestampsRef.current
+            .filter((timestamp) => now - timestamp <= INVALID_WS_PAYLOAD_WINDOW_MS)
+            .concat(now);
+
+          await notifyError(
+            plugin,
+            normalizeError({
+              code: 'E_INVALID_WS_PAYLOAD',
+              error,
+            }),
+            { scope: 'client', toast: false }
+          );
+
+          if (invalidPayloadTimestampsRef.current.length >= INVALID_WS_PAYLOAD_THRESHOLD) {
+            setConnectionState('degraded');
+          }
         }
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      wsRef.current = null;
-      if (runtimeStateRef.current !== 'off') {
-        setConnectionState('connecting');
-      }
-      scheduleClientReconnect();
-    };
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (runtimeStateRef.current !== 'off') {
+          setConnectionState('connecting');
+        }
+        scheduleClientReconnect();
+      };
 
-    ws.onerror = async () => {
-      setConnectionState('degraded');
-      await notifyError(
-        plugin,
-        normalizeError({
-          code: 'E_WS_RUNTIME',
-          details: `wsUrl=${wsUrl} | readyState=${ws.readyState}`,
-        }),
-        { scope: 'client' },
-      );
-    };
-  }, [clearReconnect, closeSocket, handleServerUpdate, plugin, scheduleClientReconnect]);
+      ws.onerror = async () => {
+        setConnectionState('degraded');
+        await notifyError(
+          plugin,
+          normalizeError({
+            code: 'E_WS_RUNTIME',
+            details: `wsUrl=${wsUrl} | readyState=${ws.readyState}`,
+          }),
+          { scope: 'client' }
+        );
+      };
+    },
+    [clearReconnect, closeSocket, handleServerUpdate, plugin, scheduleClientReconnect]
+  );
 
   const fetchServerState = useCallback(async (): Promise<ServerState> => {
     const cfg = configRef.current;
@@ -447,7 +451,7 @@ export function usePageSyncEngine(): PageSyncEngine {
       () => {
         void stopSync('inactive');
       },
-      Math.max(1, cfg.inactivityHours) * 60 * 60 * 1000,
+      Math.max(1, cfg.inactivityHours) * 60 * 60 * 1000
     );
   }, [clearInactivityTimer, stopSync]);
 
@@ -489,7 +493,7 @@ export function usePageSyncEngine(): PageSyncEngine {
               error,
               details: `remId=${remId} | ${errorDetails(error)}`,
             }),
-            { scope: 'host' },
+            { scope: 'host' }
           );
         }
         return;
@@ -503,7 +507,7 @@ export function usePageSyncEngine(): PageSyncEngine {
         setRuntimeState('idle');
       }
     },
-    [plugin, resetInactivityTimer, sendUpdate],
+    [plugin, resetInactivityTimer, sendUpdate]
   );
 
   const onGlobalOpenRem = useCallback(
@@ -515,7 +519,7 @@ export function usePageSyncEngine(): PageSyncEngine {
       const remId = fromArgs ?? (await getCurrentRemId(plugin));
       await handleLocalNavigation(remId);
     },
-    [handleLocalNavigation, plugin],
+    [handleLocalNavigation, plugin]
   );
 
   useAPIEventListener(AppEvents.GlobalOpenRem, undefined, (args) => {
@@ -542,6 +546,12 @@ export function usePageSyncEngine(): PageSyncEngine {
     setConnectionState('connecting');
 
     try {
+      await trackHostSyncAnalytics(plugin);
+    } catch (error) {
+      // Do nothing
+    }
+
+    try {
       await sendUpdate('strong');
       resetInactivityTimer();
     } catch (error) {
@@ -552,7 +562,7 @@ export function usePageSyncEngine(): PageSyncEngine {
           error,
           details: `initial_strong | ${errorDetails(error)}`,
         }),
-        { scope: 'host', force: true },
+        { scope: 'host', force: true }
       );
       await stopSync('error');
     }
@@ -577,7 +587,7 @@ export function usePageSyncEngine(): PageSyncEngine {
               error,
               details: `initial_state_remId=${state.remId} | ${errorDetails(error)}`,
             }),
-            { scope: 'client' },
+            { scope: 'client' }
           );
         }
       }
@@ -591,7 +601,7 @@ export function usePageSyncEngine(): PageSyncEngine {
           error,
           details: errorDetails(error),
         }),
-        { scope: 'client', force: true },
+        { scope: 'client', force: true }
       );
       await stopSync('error');
     }
@@ -629,7 +639,7 @@ export function usePageSyncEngine(): PageSyncEngine {
             error,
             details: `manual_strong | ${errorDetails(error)}`,
           }),
-          { scope: 'host' },
+          { scope: 'host' }
         );
       }
       return;
@@ -649,7 +659,7 @@ export function usePageSyncEngine(): PageSyncEngine {
           error,
           details: `manual_resync | ${errorDetails(error)}`,
         }),
-        { scope: 'client' },
+        { scope: 'client' }
       );
     }
   }, [applyRemoteNavigation, fetchServerState, plugin, resetInactivityTimer, sendUpdate]);

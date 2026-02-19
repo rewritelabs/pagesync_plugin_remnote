@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   inactivityHours: 'pagesync.inactivityHours',
   deviceId: 'pagesync.deviceId',
   debugLogs: 'pagesync.debugLogs',
+  analyticsMonth: 'pagesync.analyticsMonth',
 } as const;
 
 export const API_PATHS = {
