@@ -195,11 +195,17 @@
 
 .dark .pagesync-icon-button {
   border-color: var(--rn-clr-border-primary, #555a63);
+  color: var(--rn-clr-text-primary, #f1f3f7);
 }
 
 .dark .pagesync-sync-text-button,
 .dark .pagesync-popup-actions button {
   background: var(--rn-clr-background-secondary, #2a2d34);
+}
+
+.dark .pagesync-sync-text-button,
+.dark .pagesync-sync-action-button {
+  color: var(--rn-clr-text-primary, #f1f3f7);
 }
 
 .dark .pagesync-popup-panel {

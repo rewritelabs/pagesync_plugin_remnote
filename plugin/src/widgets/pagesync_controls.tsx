@@ -1,8 +1,35 @@
-import { renderWidget } from '@remnote/plugin-sdk';
+import { AppEvents, renderWidget, useAPIEventListener, usePlugin } from '@remnote/plugin-sdk';
 import { useEffect, useRef, useState } from 'react';
+import {
+  PAGESYNC_MESSAGE_TYPES,
+  type PageSyncRuntimeCommandAction,
+  type PageSyncRuntimeStatusMessage,
+} from '../constants';
 import '../style.css';
 import '../App.css';
-import { usePageSyncEngine } from './use_pagesync_sync_engine';
+
+type BroadcastEnvelope = {
+  message?: unknown;
+};
+
+function unwrapBroadcastPayload(args: unknown): unknown {
+  if (args && typeof args === 'object' && 'message' in (args as BroadcastEnvelope)) {
+    return (args as BroadcastEnvelope).message;
+  }
+  return args;
+}
+
+function isRuntimeStatusMessage(value: unknown): value is PageSyncRuntimeStatusMessage {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.type === PAGESYNC_MESSAGE_TYPES.runtimeStatus &&
+    (candidate.runtimeState === 'off' || candidate.runtimeState === 'sync' || candidate.runtimeState === 'idle')
+  );
+}
 
 function IconButton({
   title,
@@ -45,13 +72,41 @@ function SyncIcon() {
 }
 
 export const PageSyncControlsWidget = () => {
-  const { config, isActive, onPressSync, onPressResync, onStop, onOpenSettings } =
-    usePageSyncEngine();
+  const plugin = usePlugin();
+  const [status, setStatus] = useState<PageSyncRuntimeStatusMessage | null>(null);
   const [showSyncTextInActiveMode, setShowSyncTextInActiveMode] = useState(false);
   const syncActionRef = useRef<HTMLButtonElement | null>(null);
 
+  const sendCommand = async (action: PageSyncRuntimeCommandAction) => {
+    await plugin.messaging.broadcast({
+      type: PAGESYNC_MESSAGE_TYPES.runtimeCommand,
+      action,
+      at: Date.now(),
+    });
+  };
+
+  const requestStatus = async () => {
+    await plugin.messaging.broadcast({
+      type: PAGESYNC_MESSAGE_TYPES.runtimeStatusRequest,
+      requestId: `controls-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: Date.now(),
+    });
+  };
+
   useEffect(() => {
-    if (!isActive) {
+    void requestStatus();
+  }, []);
+
+  useAPIEventListener(AppEvents.MessageBroadcast, undefined, (args) => {
+    const payload = unwrapBroadcastPayload(args);
+    if (!isRuntimeStatusMessage(payload)) {
+      return;
+    }
+    setStatus(payload);
+  });
+
+  useEffect(() => {
+    if (!status?.isActive) {
       setShowSyncTextInActiveMode(false);
       return;
     }
@@ -71,9 +126,9 @@ export const PageSyncControlsWidget = () => {
     update();
 
     return () => observer.disconnect();
-  }, [isActive]);
+  }, [status?.isActive]);
 
-  if (!config) {
+  if (!status || !status.mode) {
     return <div className="pagesync-card">Loading PageSync...</div>;
   }
 
@@ -81,22 +136,22 @@ export const PageSyncControlsWidget = () => {
     <div className="pagesync-card">
       <div className="pagesync-controls full-width">
         <div className="pagesync-left-group">
-          <IconButton title="Settings" onClick={() => void onOpenSettings()}>
+          <IconButton title="Settings" onClick={() => void sendCommand('open_settings')}>
             <SettingsIcon />
           </IconButton>
         </div>
 
         <div className="pagesync-right-group">
-          {!isActive ? (
+          {!status.isActive ? (
             <button
               className="pagesync-sync-text-button pagesync-sync-fill"
-              onClick={() => void onPressSync()}
+              onClick={() => void sendCommand('sync_toggle_or_start')}
             >
               Sync
             </button>
           ) : (
             <>
-              <IconButton title="Stop" onClick={() => void onStop()}>
+              <IconButton title="Stop" onClick={() => void sendCommand('stop')}>
                 <StopIcon />
               </IconButton>
               <button
@@ -106,7 +161,7 @@ export const PageSyncControlsWidget = () => {
                 }`}
                 title="Sync Now"
                 aria-label="Sync Now"
-                onClick={() => void onPressResync()}
+                onClick={() => void sendCommand('sync_now')}
               >
                 <span className="pagesync-sync-label">Sync</span>
                 <span className="pagesync-sync-icon-wrap">

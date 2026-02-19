@@ -1,6 +1,7 @@
 export type SyncStrength = 'strong' | 'weak';
 export type DeviceMode = 'host' | 'client';
 export type ClientRuntimeState = 'off' | 'sync' | 'idle';
+export type ConnectionState = 'inactive' | 'connecting' | 'connected' | 'degraded';
 
 export const DEFAULT_SERVER_HTTP_URL = 'https://vps1.jakobg.dev/remnotepagesync/';
 export const DEFAULT_SERVER_WS_URL = 'wss://vps1.jakobg.dev/remnotepagesync/ws';
@@ -44,4 +45,40 @@ export type PageUpdateMessage = {
   strength: SyncStrength;
   updatedAt: string;
   sourceClientId: string;
+};
+
+export const PAGESYNC_MESSAGE_TYPES = {
+  settingsSaved: 'settings_saved',
+  runtimeCommand: 'pagesync_runtime_command',
+  runtimeStatusRequest: 'pagesync_runtime_status_request',
+  runtimeStatus: 'pagesync_runtime_status',
+  legacySyncTrigger: 'pagesync_sync_trigger',
+} as const;
+
+export type PageSyncRuntimeCommandAction =
+  | 'sync_toggle_or_start'
+  | 'sync_now'
+  | 'stop'
+  | 'open_settings';
+
+export type PageSyncRuntimeCommandMessage = {
+  type: typeof PAGESYNC_MESSAGE_TYPES.runtimeCommand;
+  action: PageSyncRuntimeCommandAction;
+  at: number;
+};
+
+export type PageSyncRuntimeStatusRequestMessage = {
+  type: typeof PAGESYNC_MESSAGE_TYPES.runtimeStatusRequest;
+  requestId: string;
+  at: number;
+};
+
+export type PageSyncRuntimeStatusMessage = {
+  type: typeof PAGESYNC_MESSAGE_TYPES.runtimeStatus;
+  requestId?: string;
+  runtimeState: ClientRuntimeState;
+  connectionState: ConnectionState;
+  mode: DeviceMode | null;
+  isActive: boolean;
+  updatedAt: number;
 };

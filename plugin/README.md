@@ -1,6 +1,6 @@
 # PageSync
 
-Use RemNote on two devices (for example, typing on laptop and handwriting on tablet) and keep open page in sync.
+Keep currently open page between two devices in sync (for example, typing on laptop and handwriting on tablet).
 
 ## Usage
 
