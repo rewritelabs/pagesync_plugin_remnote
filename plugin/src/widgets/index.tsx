@@ -1,6 +1,6 @@
 import { declareIndexPlugin, type ReactRNPlugin, WidgetLocation } from '@remnote/plugin-sdk';
 import '../style.css';
-import '../index.css';
+import '../App.css';
 
 async function onActivate(plugin: ReactRNPlugin) {
   await plugin.app.registerWidget('pagesync_controls', WidgetLocation.SidebarEnd, {

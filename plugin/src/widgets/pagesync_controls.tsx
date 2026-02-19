@@ -1,10 +1,18 @@
 import { renderWidget } from '@remnote/plugin-sdk';
 import { useEffect, useRef, useState } from 'react';
 import '../style.css';
-import '../index.css';
+import '../App.css';
 import { usePageSyncEngine } from './use_pagesync_sync_engine';
 
-function IconButton({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+function IconButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button className="pagesync-icon-button" onClick={onClick} title={title} aria-label={title}>
       {children}

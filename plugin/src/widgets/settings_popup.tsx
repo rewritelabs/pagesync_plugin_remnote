@@ -5,7 +5,7 @@ import type { DeviceMode } from '../constants';
 import { normalizeError, type UserFacingError } from '../errors';
 import { notifyError } from '../notify';
 import '../style.css';
-import '../index.css';
+import '../App.css';
 
 function SettingsPopupWidget() {
   const plugin = usePlugin();
