@@ -1,0 +1,22 @@
+{
+  "author": "Rewrite Labs",
+  "name": "PageSync",
+  "description": "Sync open Remnote Page across devices.",
+  "enableOnMobile": true,
+  "id": "pagesync_plugin_rewritelabs",
+  "manifestVersion": 1,
+  "version": {
+    "major": 0,
+    "minor": 1,
+    "patch": 0
+  },
+  "requestNative": false,
+  "requiredScopes": [
+    {
+      "type": "All",
+      "level": "Read"
+    }
+  ],
+  "repoUrl": "https://github.com/rewritelabs/pagesync_plugin_remnote",
+  "supportUrl": "https://rewritelabs.com/ventures/pagesync"
+}

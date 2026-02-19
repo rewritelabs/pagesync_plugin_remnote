@@ -1,0 +1,228 @@
+.pagesync-card {
+  width: 100%;
+  padding: 4px 0;
+  background: transparent !important;
+  box-sizing: border-box;
+}
+
+.pagesync-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent !important;
+}
+
+.pagesync-controls.full-width {
+  width: 100%;
+}
+
+.pagesync-right-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent !important;
+}
+
+.pagesync-left-group {
+  flex: 0 0 auto;
+  background: transparent !important;
+}
+
+.pagesync-right-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pagesync-icon-button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.pagesync-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.pagesync-sync-text-button {
+  height: 24px;
+  padding: 0 12px;
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  background: var(--rn-clr-background-secondary, #f5f7fa);
+  cursor: pointer;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagesync-sync-fill {
+  width: 100%;
+}
+
+.pagesync-sync-action-button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pagesync-sync-label {
+  display: none;
+  font-weight: 600;
+}
+
+.pagesync-sync-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagesync-sync-action-button.pagesync-show-text .pagesync-sync-label {
+  display: inline;
+}
+
+.pagesync-sync-action-button.pagesync-show-text .pagesync-sync-icon-wrap {
+  display: none;
+}
+
+.pagesync-sync-action-button.pagesync-show-icon .pagesync-sync-label {
+  display: none;
+}
+
+.pagesync-sync-action-button.pagesync-show-icon .pagesync-sync-icon-wrap {
+  display: inline-flex;
+}
+
+.pagesync-popup-root {
+  width: 100%;
+  min-height: 70vh;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 20px;
+}
+
+.pagesync-popup-panel {
+  width: min(560px, 100%);
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 12px;
+  background: var(--rn-clr-background-primary, #ffffff);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pagesync-popup-panel h2 {
+  margin: 0;
+}
+
+.pagesync-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pagesync-field input,
+.pagesync-field select {
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+
+.pagesync-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pagesync-checkbox-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.pagesync-help {
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--rn-clr-background-secondary, #f5f7fa);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pagesync-help p {
+  margin: 0;
+}
+
+.pagesync-help p + p {
+  margin-top: 6px;
+}
+
+.pagesync-error-inline {
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--rn-clr-background-secondary, #f5f7fa);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.pagesync-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pagesync-popup-actions button {
+  border: 1px solid var(--rn-clr-border-primary, #d6dbe5);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--rn-clr-background-secondary, #f5f7fa);
+  cursor: pointer;
+}
+
+.dark .pagesync-icon-button {
+  border-color: var(--rn-clr-border-primary, #555a63);
+}
+
+.dark .pagesync-sync-text-button,
+.dark .pagesync-popup-actions button {
+  background: var(--rn-clr-background-secondary, #2a2d34);
+}
+
+.dark .pagesync-popup-panel {
+  background: var(--rn-clr-background-primary, #1d2027);
+  border-color: var(--rn-clr-border-primary, #555a63);
+}
+
+.dark .pagesync-field input,
+.dark .pagesync-field select {
+  background: var(--rn-clr-background-secondary, #2a2d34);
+  border-color: var(--rn-clr-border-primary, #555a63);
+}
+
+.dark .pagesync-checkbox-row input[type='checkbox'] {
+  accent-color: var(--rn-clr-text-primary, #f1f3f7);
+}
+
+.dark .pagesync-help {
+  background: var(--rn-clr-background-secondary, #2a2d34);
+  border-color: var(--rn-clr-border-primary, #555a63);
+}
+
+.dark .pagesync-error-inline {
+  background: var(--rn-clr-background-secondary, #2a2d34);
+  border-color: var(--rn-clr-border-primary, #555a63);
+}
