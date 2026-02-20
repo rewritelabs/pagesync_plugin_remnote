@@ -68,6 +68,17 @@ function isPageUpdateMessage(value: unknown): value is PageUpdateMessage {
   );
 }
 
+function isWelcomeMessage(value: unknown): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.type !== 'welcome') {
+    return false;
+  }
+  return candidate.now === undefined || typeof candidate.now === 'string';
+}
+
 function isSettingsSavedMessage(value: unknown): boolean {
   return (
     !!value &&
@@ -556,6 +567,9 @@ export class PageSyncRuntime {
       const parsed = JSON.parse(rawData as string) as unknown;
       if (isPageUpdateMessage(parsed)) {
         await this.handleServerUpdate(parsed);
+        return;
+      }
+      if (isWelcomeMessage(parsed)) {
         return;
       }
 

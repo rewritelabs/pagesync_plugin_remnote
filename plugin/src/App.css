@@ -232,3 +232,50 @@
   background: var(--rn-clr-background-secondary, #2a2d34);
   border-color: var(--rn-clr-border-primary, #555a63);
 }
+
+.pagesync-popup-root {
+  color: #f1f3f7;
+}
+
+.pagesync-popup-panel {
+  background: #1d2027;
+  border-color: #555a63;
+  color: #f1f3f7;
+}
+
+.pagesync-popup-panel h2,
+.pagesync-field span,
+.pagesync-checkbox-row span,
+.pagesync-help,
+.pagesync-help p,
+.pagesync-error-inline {
+  color: #f1f3f7;
+}
+
+.pagesync-field input,
+.pagesync-field select {
+  background: #2a2d34;
+  border-color: #555a63;
+  color: #f1f3f7;
+}
+
+.pagesync-field select option {
+  background: #2a2d34;
+  color: #f1f3f7;
+}
+
+.pagesync-checkbox-row input[type='checkbox'] {
+  accent-color: #f1f3f7;
+}
+
+.pagesync-help,
+.pagesync-error-inline {
+  background: #2a2d34;
+  border-color: #555a63;
+}
+
+.pagesync-popup-actions button {
+  background: #2a2d34;
+  border-color: #555a63;
+  color: #f1f3f7;
+}
