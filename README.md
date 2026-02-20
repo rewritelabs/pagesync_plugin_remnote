@@ -1,6 +1,6 @@
-# PageSync Plugin for RemNote
+# Page Sync Plugin for RemNote
 
-PageSync lets you mirror the currently open Rem across devices (for example: laptop + tablet).
+Page Sync lets you mirror the currently open Rem across devices (for example: laptop + tablet).
 
 This repository contains two parts:
 

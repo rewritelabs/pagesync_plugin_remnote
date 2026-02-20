@@ -1,13 +1,38 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 
-const PORT = Number(process.env.PORT || 9091);
+function readPositiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
+function readCorsAllowedOrigins() {
+  const raw = process.env.CORS_ALLOWED_ORIGINS;
+  if (!raw || raw.trim() === '') {
+    return ['*'];
+  }
+  const values = raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return values.length > 0 ? values : ['*'];
+}
+
+const PORT = readPositiveIntegerEnv('PORT', 9091);
 const MAX_BODY_BYTES = 1_000_000;
-const INACTIVITY_TTL_MS = 24 * 60 * 60 * 1000;
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const INACTIVITY_TTL_MS = readPositiveIntegerEnv('INACTIVITY_TTL_MS', 24 * 60 * 60 * 1000);
+const CLEANUP_INTERVAL_MS = readPositiveIntegerEnv('CLEANUP_INTERVAL_MS', 5 * 60 * 1000);
+const CORS_ALLOWED_ORIGINS = readCorsAllowedOrigins();
 const SAFE_ID_REGEX = /^[A-Za-z0-9_-]+$/;
 const MAX_ID_LENGTH = 128;
-const ALLOWED_UPDATE_KEYS = new Set(['remId', 'strength', 'sourceClientId', 'sentAt']);
+const ALLOWED_UPDATE_KEYS = new Set(['remId', 'strength', 'userId', 'sourceClientId', 'sentAt']);
 
 function makeEmptyState() {
   return {
@@ -18,8 +43,8 @@ function makeEmptyState() {
   };
 }
 
-const latestState = makeEmptyState();
-let latestStateLastTouchedAt = null;
+const latestStateByUserId = new Map();
+const latestStateLastTouchedAtByUserId = new Map();
 const activeClients = new Map();
 const clients = new Set();
 let updateCounter = 0;
@@ -34,6 +59,7 @@ const metrics = {
   httpUpdateRejectedTotal: 0,
   httpNotFoundTotal: 0,
   wsConnectionsTotal: 0,
+  wsRejectedInvalidUserTotal: 0,
   wsErrorsTotal: 0,
   wsTerminatedStaleTotal: 0,
   wsBroadcastMessagesTotal: 0,
@@ -47,27 +73,52 @@ function log(event, details = {}) {
   console.log(`[pagesync-server] ${stamp} ${event}`, details);
 }
 
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function getAllowedOrigin(requestOrigin) {
+  if (CORS_ALLOWED_ORIGINS.includes('*')) {
+    return '*';
+  }
+  if (!requestOrigin) {
+    return null;
+  }
+  return CORS_ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : null;
+}
+
+function setCorsHeaders(req, res) {
+  const requestOrigin = req.headers.origin;
+  const allowedOrigin = getAllowedOrigin(requestOrigin);
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    if (allowedOrigin !== '*') {
+      res.setHeader('Vary', 'Origin');
+    }
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-function sendJson(res, statusCode, payload) {
-  setCorsHeaders(res);
+function sendJson(req, res, statusCode, payload) {
+  setCorsHeaders(req, res);
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
 }
 
-function sendError(res, statusCode, code, message) {
-  sendJson(res, statusCode, { ok: false, error: message, code });
+function sendError(req, res, statusCode, code, message) {
+  sendJson(req, res, statusCode, { ok: false, error: message, code });
 }
 
 function makeCodedError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function parseRequestUrl(rawUrl) {
+  try {
+    return new URL(rawUrl || '/', 'http://localhost');
+  } catch {
+    return new URL('/', 'http://localhost');
+  }
 }
 
 function parseRequestBody(req) {
@@ -101,7 +152,22 @@ function isPlainObject(value) {
 }
 
 function isSafeId(value) {
-  return typeof value === 'string' && value.length > 0 && value.length <= MAX_ID_LENGTH && SAFE_ID_REGEX.test(value);
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_ID_LENGTH &&
+    SAFE_ID_REGEX.test(value)
+  );
+}
+
+function getUserIdFromUrl(rawUrl) {
+  const parsed = parseRequestUrl(rawUrl);
+  const userId = parsed.searchParams.get('userId');
+  return typeof userId === 'string' ? userId : null;
+}
+
+function getStateForUser(userId) {
+  return latestStateByUserId.get(userId) ?? makeEmptyState();
 }
 
 function validateUpdatePayload(payload) {
@@ -124,6 +190,10 @@ function validateUpdatePayload(payload) {
     return { ok: false, code: 'E_INVALID_FIELD', message: 'Invalid strength' };
   }
 
+  if (!isSafeId(payload.userId)) {
+    return { ok: false, code: 'E_INVALID_FIELD', message: 'Invalid userId' };
+  }
+
   if (!isSafeId(payload.sourceClientId)) {
     return { ok: false, code: 'E_INVALID_FIELD', message: 'Invalid sourceClientId' };
   }
@@ -139,27 +209,18 @@ function validateUpdatePayload(payload) {
     value: {
       remId: payload.remId,
       strength: payload.strength,
+      userId: payload.userId,
       sourceClientId: payload.sourceClientId,
       sentAt: payload.sentAt,
     },
   };
 }
 
-function clearLatestState(reason) {
-  latestState.remId = null;
-  latestState.strength = null;
-  latestState.updatedAt = null;
-  latestState.sourceClientId = null;
-  latestStateLastTouchedAt = null;
+function clearLatestStateForUser(userId, reason) {
+  latestStateByUserId.delete(userId);
+  latestStateLastTouchedAtByUserId.delete(userId);
   metrics.memoryLatestStateClearedTotal += 1;
-  log('memory.latest_state.cleared', { reason });
-}
-
-function isLatestStateExpired(now = Date.now()) {
-  if (latestStateLastTouchedAt === null) {
-    return false;
-  }
-  return now - latestStateLastTouchedAt > INACTIVITY_TTL_MS;
+  log('memory.latest_state.cleared', { reason, userId });
 }
 
 function cleanupInactiveMemory(now = Date.now()) {
@@ -179,37 +240,41 @@ function cleanupInactiveMemory(now = Date.now()) {
     });
   }
 
-  if (isLatestStateExpired(now)) {
-    clearLatestState('ttl_expired');
+  for (const [userId, lastTouchedAt] of latestStateLastTouchedAtByUserId.entries()) {
+    if (now - lastTouchedAt > INACTIVITY_TTL_MS) {
+      clearLatestStateForUser(userId, 'ttl_expired');
+    }
   }
 }
 
-function broadcastPageUpdate() {
-  if (!latestState.remId || !latestState.strength || !latestState.updatedAt || !latestState.sourceClientId) {
-    log('broadcast.skipped', { reason: 'state_incomplete' });
+function broadcastPageUpdate(userId, state) {
+  if (!state.remId || !state.strength || !state.updatedAt || !state.sourceClientId) {
+    log('broadcast.skipped', { reason: 'state_incomplete', userId });
     return;
   }
 
   const message = JSON.stringify({
     type: 'page_update',
-    remId: latestState.remId,
-    strength: latestState.strength,
-    updatedAt: latestState.updatedAt,
-    sourceClientId: latestState.sourceClientId,
+    remId: state.remId,
+    strength: state.strength,
+    updatedAt: state.updatedAt,
+    userId,
+    sourceClientId: state.sourceClientId,
   });
 
   let sent = 0;
   for (const ws of clients) {
-    if (ws.readyState === ws.OPEN) {
+    if (ws.readyState === ws.OPEN && ws.userId === userId) {
       ws.send(message);
       sent += 1;
     }
   }
 
   log('ws.broadcast.page_update', {
-    remId: latestState.remId,
-    strength: latestState.strength,
-    sourceClientId: latestState.sourceClientId,
+    userId,
+    remId: state.remId,
+    strength: state.strength,
+    sourceClientId: state.sourceClientId,
     recipients: sent,
   });
   metrics.wsBroadcastMessagesTotal += 1;
@@ -226,48 +291,55 @@ function getMetricsSnapshot() {
     gauges: {
       wsClientsConnected: clients.size,
       trackedActiveClients: activeClients.size,
-      latestStateIsEmpty: latestState.remId === null,
-      latestStateAgeMs: latestStateLastTouchedAt === null ? null : now - latestStateLastTouchedAt,
+      trackedUsers: latestStateByUserId.size,
     },
-    latestState,
   };
 }
 
 const server = http.createServer(async (req, res) => {
   const method = req.method || 'GET';
-  const url = req.url || '/';
+  const parsedUrl = parseRequestUrl(req.url || '/');
+  const pathname = parsedUrl.pathname;
   metrics.httpRequestsTotal += 1;
-  log('http.request', { method, url });
+  log('http.request', { method, url: req.url || '/' });
 
   if (method === 'OPTIONS') {
     metrics.httpOptionsRequestsTotal += 1;
-    setCorsHeaders(res);
+    setCorsHeaders(req, res);
     res.statusCode = 204;
     res.end();
     return;
   }
 
-  if (method === 'GET' && url === '/health') {
+  if (method === 'GET' && pathname === '/health') {
     metrics.httpHealthRequestsTotal += 1;
     log('http.health.ok');
-    sendJson(res, 200, { ok: true, now: new Date().toISOString() });
+    sendJson(req, res, 200, { ok: true, now: new Date().toISOString() });
     return;
   }
 
-  if (method === 'GET' && url === '/metrics') {
-    sendJson(res, 200, getMetricsSnapshot());
+  if (method === 'GET' && pathname === '/metrics') {
+    sendJson(req, res, 200, getMetricsSnapshot());
     return;
   }
 
-  if (method === 'GET' && url === '/state') {
+  if (method === 'GET' && pathname === '/state') {
     metrics.httpStateRequestsTotal += 1;
+
+    const userId = parsedUrl.searchParams.get('userId');
+    if (!isSafeId(userId)) {
+      sendError(req, res, 400, 'E_INVALID_QUERY', 'Missing or invalid userId query parameter');
+      return;
+    }
+
     cleanupInactiveMemory();
-    log('http.state.read', latestState);
-    sendJson(res, 200, latestState);
+    const state = getStateForUser(userId);
+    log('http.state.read', { userId, state });
+    sendJson(req, res, 200, state);
     return;
   }
 
-  if (method === 'POST' && url === '/update') {
+  if (method === 'POST' && pathname === '/update') {
     metrics.httpUpdateRequestsTotal += 1;
     try {
       const payload = await parseRequestBody(req);
@@ -278,7 +350,7 @@ const server = http.createServer(async (req, res) => {
           code: validated.code,
           message: validated.message,
         });
-        sendError(res, 400, validated.code, validated.message);
+        sendError(req, res, 400, validated.code, validated.message);
         return;
       }
 
@@ -286,15 +358,20 @@ const server = http.createServer(async (req, res) => {
       const nowIso = new Date(nowMs).toISOString();
       const update = validated.value;
 
+      const nextState = {
+        remId: update.remId,
+        strength: update.strength,
+        updatedAt: nowIso,
+        sourceClientId: update.sourceClientId,
+      };
+
       updateCounter += 1;
       metrics.httpUpdateAcceptedTotal += 1;
-      latestState.remId = update.remId;
-      latestState.strength = update.strength;
-      latestState.updatedAt = nowIso;
-      latestState.sourceClientId = update.sourceClientId;
-      latestStateLastTouchedAt = nowMs;
+      latestStateByUserId.set(update.userId, nextState);
+      latestStateLastTouchedAtByUserId.set(update.userId, nowMs);
 
       activeClients.set(update.sourceClientId, {
+        userId: update.userId,
         lastSeenAt: nowMs,
         lastRemId: update.remId,
         lastStrength: update.strength,
@@ -302,13 +379,14 @@ const server = http.createServer(async (req, res) => {
 
       log('http.update.accepted', {
         seq: updateCounter,
-        remId: latestState.remId,
-        strength: latestState.strength,
-        sourceClientId: latestState.sourceClientId,
+        userId: update.userId,
+        remId: nextState.remId,
+        strength: nextState.strength,
+        sourceClientId: nextState.sourceClientId,
       });
 
-      broadcastPageUpdate();
-      sendJson(res, 200, { ok: true, state: latestState });
+      broadcastPageUpdate(update.userId, nextState);
+      sendJson(req, res, 200, { ok: true, state: nextState });
     } catch (error) {
       metrics.httpUpdateRejectedTotal += 1;
       const rawCode = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
@@ -326,29 +404,38 @@ const server = http.createServer(async (req, res) => {
         error: error instanceof Error ? error.message : String(error),
         code,
       });
-      sendError(res, statusCode, code, message);
+      sendError(req, res, statusCode, code, message);
     }
     return;
   }
 
   metrics.httpNotFoundTotal += 1;
-  log('http.not_found', { method, url });
-  sendError(res, 404, 'E_NOT_FOUND', 'Not found');
+  log('http.not_found', { method, url: req.url || '/' });
+  sendError(req, res, 404, 'E_NOT_FOUND', 'Not found');
 });
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, request) => {
+  const userId = getUserIdFromUrl(request.url || '/');
+  if (!isSafeId(userId)) {
+    metrics.wsRejectedInvalidUserTotal += 1;
+    log('ws.connect.rejected_invalid_user', { url: request.url || '/' });
+    ws.close(1008, 'invalid userId');
+    return;
+  }
+
   ws.isAlive = true;
+  ws.userId = userId;
   clients.add(ws);
   metrics.wsConnectionsTotal += 1;
-  log('ws.connect', { clients: clients.size });
+  log('ws.connect', { clients: clients.size, userId });
 
   ws.send(
     JSON.stringify({
       type: 'welcome',
       now: new Date().toISOString(),
-    }),
+    })
   );
 
   ws.on('pong', () => {
@@ -357,13 +444,14 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     clients.delete(ws);
-    log('ws.close', { clients: clients.size });
+    log('ws.close', { clients: clients.size, userId: ws.userId });
   });
 
   ws.on('error', (error) => {
     metrics.wsErrorsTotal += 1;
     log('ws.error', {
       error: error instanceof Error ? error.message : String(error),
+      userId: ws.userId,
       clients: clients.size,
     });
   });
@@ -375,7 +463,7 @@ const wsHealthInterval = setInterval(() => {
       ws.terminate();
       clients.delete(ws);
       metrics.wsTerminatedStaleTotal += 1;
-      log('ws.terminated_stale', { clients: clients.size });
+      log('ws.terminated_stale', { clients: clients.size, userId: ws.userId });
       continue;
     }
     ws.isAlive = false;

@@ -1,6 +1,6 @@
 {
   "author": "Rewrite Labs",
-  "name": "PageSync",
+  "name": "Page Sync",
   "description": "Sync open Remnote Page across devices.",
   "enableOnMobile": true,
   "id": "pagesync_plugin_rewritelabs",
@@ -8,7 +8,7 @@
   "version": {
     "major": 0,
     "minor": 1,
-    "patch": 2
+    "patch": 3
   },
   "requestNative": false,
   "requiredScopes": [

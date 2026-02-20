@@ -13,12 +13,36 @@ export type DeviceConfig = {
   serverHttpUrl: string;
   serverWsUrl: string;
   inactivityHours: number;
+  userId: string;
   deviceId: string;
   debugLogs: boolean;
 };
 
-function makeDeviceId() {
-  return `pagesync-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+function makeSecureId(prefix: string, byteLength = 24) {
+  const bytes = new Uint8Array(byteLength);
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {
+    throw new Error('Secure random generator unavailable');
+  }
+  cryptoApi.getRandomValues(bytes);
+
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let suffix = '';
+  for (const byte of bytes) {
+    suffix += alphabet[byte % alphabet.length];
+  }
+
+  return `${prefix}${suffix}`;
+}
+
+export async function ensureUserId(plugin: RNPlugin): Promise<string> {
+  const existing = await plugin.storage.getSynced<string>(STORAGE_KEYS.userId);
+  if (existing) {
+    return existing;
+  }
+  const created = makeSecureId('pagesyncu_');
+  await plugin.storage.setSynced(STORAGE_KEYS.userId, created);
+  return created;
 }
 
 export async function ensureDeviceId(plugin: RNPlugin): Promise<string> {
@@ -26,12 +50,13 @@ export async function ensureDeviceId(plugin: RNPlugin): Promise<string> {
   if (existing) {
     return existing;
   }
-  const created = makeDeviceId();
+  const created = makeSecureId('pagesyncd_');
   await plugin.storage.setLocal(STORAGE_KEYS.deviceId, created);
   return created;
 }
 
 export async function loadDeviceConfig(plugin: RNPlugin): Promise<DeviceConfig> {
+  const userId = await ensureUserId(plugin);
   const deviceId = await ensureDeviceId(plugin);
 
   const mode = (await plugin.storage.getLocal<DeviceMode>(STORAGE_KEYS.mode)) ?? 'client';
@@ -52,6 +77,7 @@ export async function loadDeviceConfig(plugin: RNPlugin): Promise<DeviceConfig> 
     serverHttpUrl,
     serverWsUrl,
     inactivityHours,
+    userId,
     deviceId,
     debugLogs,
   };
@@ -59,7 +85,7 @@ export async function loadDeviceConfig(plugin: RNPlugin): Promise<DeviceConfig> 
 
 export async function saveDeviceConfig(
   plugin: RNPlugin,
-  patch: Partial<Omit<DeviceConfig, 'deviceId'>>,
+  patch: Partial<Omit<DeviceConfig, 'deviceId' | 'userId'>>,
 ): Promise<DeviceConfig> {
   if (patch.mode) {
     await plugin.storage.setLocal(STORAGE_KEYS.mode, patch.mode);

@@ -3,8 +3,10 @@ export type DeviceMode = 'host' | 'client';
 export type ClientRuntimeState = 'off' | 'sync' | 'idle';
 export type ConnectionState = 'inactive' | 'connecting' | 'connected' | 'degraded';
 
-export const DEFAULT_SERVER_HTTP_URL = 'https://vps1.jakobg.dev/remnotepagesync/';
-export const DEFAULT_SERVER_WS_URL = 'wss://vps1.jakobg.dev/remnotepagesync/ws';
+export const DEFAULT_SERVER_HTTP_URL = 'https://remnotepagesync.rewritelabs.com';
+export const DEFAULT_SERVER_WS_URL = 'wss://remnotepagesync.rewritelabs.com/ws';
+// export const DEFAULT_SERVER_HTTP_URL = 'https://myproject.localhost/';
+// export const DEFAULT_SERVER_WS_URL = 'wss://myproject.localhost/ws';
 export const DEFAULT_INACTIVITY_HOURS = 3;
 
 export const STORAGE_KEYS = {
@@ -13,6 +15,7 @@ export const STORAGE_KEYS = {
   serverHttpUrl: 'pagesync.serverHttpUrl',
   serverWsUrl: 'pagesync.serverWsUrl',
   inactivityHours: 'pagesync.inactivityHours',
+  userId: 'pagesync.userId',
   deviceId: 'pagesync.deviceId',
   debugLogs: 'pagesync.debugLogs',
   analyticsMonth: 'pagesync.analyticsMonth',
@@ -44,6 +47,7 @@ export type PageUpdateMessage = {
   remId: string;
   strength: SyncStrength;
   updatedAt: string;
+  userId: string;
   sourceClientId: string;
 };
 

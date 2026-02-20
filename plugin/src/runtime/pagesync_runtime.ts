@@ -37,6 +37,17 @@ function normalizeWsUrl(url: string) {
   return url.trim().replace(/\/+$/, '');
 }
 
+function withQueryParam(url: string, key: string, value: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set(key, value);
+    return parsed.toString();
+  } catch {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  }
+}
+
 function unwrapBroadcastPayload(args: unknown): unknown {
   if (args && typeof args === 'object' && 'message' in (args as BroadcastEnvelope)) {
     return (args as BroadcastEnvelope).message;
@@ -52,6 +63,7 @@ function isPageUpdateMessage(value: unknown): value is PageUpdateMessage {
   return (
     candidate.type === 'page_update' &&
     typeof candidate.remId === 'string' &&
+    typeof candidate.userId === 'string' &&
     (candidate.strength === 'strong' || candidate.strength === 'weak')
   );
 }
@@ -407,6 +419,7 @@ export class PageSyncRuntime {
       body: JSON.stringify({
         remId,
         strength,
+        userId: this.config.userId,
         sourceClientId: this.config.deviceId,
         sentAt: new Date().toISOString(),
       }),
@@ -438,6 +451,15 @@ export class PageSyncRuntime {
     }
 
     if (!this.config || this.config.mode !== 'client') {
+      return;
+    }
+
+    if (payload.userId !== this.config.userId) {
+      console.warn('[pagesync] Ignoring page_update for mismatched userId', {
+        expectedUserId: this.config.userId,
+        payloadUserId: payload.userId,
+        remId: payload.remId,
+      });
       return;
     }
 
@@ -476,7 +498,7 @@ export class PageSyncRuntime {
     this.closeSocket();
     this.setConnectionState('connecting');
 
-    const wsUrl = normalizeWsUrl(this.config.serverWsUrl);
+    const wsUrl = withQueryParam(normalizeWsUrl(this.config.serverWsUrl), 'userId', this.config.userId);
 
     let ws: WebSocket;
     try {
@@ -580,7 +602,12 @@ export class PageSyncRuntime {
       throw new Error('Missing config');
     }
 
-    const response = await fetch(`${normalizeHttpUrl(this.config.serverHttpUrl)}${API_PATHS.state}`);
+    const stateUrl = withQueryParam(
+      `${normalizeHttpUrl(this.config.serverHttpUrl)}${API_PATHS.state}`,
+      'userId',
+      this.config.userId
+    );
+    const response = await fetch(stateUrl);
     if (!response.ok) {
       throw new Error(await getHttpErrorDetails(response));
     }

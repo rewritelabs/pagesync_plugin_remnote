@@ -1,4 +1,4 @@
-# PageSync
+# Page Sync
 
 Keep currently open page between two devices in sync (for example, typing on laptop and handwriting on tablet).
 

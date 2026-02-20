@@ -1,6 +1,6 @@
-# PageSync Server
+# Page Sync Server
 
-Lightweight Node.js relay for the PageSync RemNote plugin.
+Lightweight Node.js relay for the Page Sync RemNote plugin.
 
 ## What it does
 
